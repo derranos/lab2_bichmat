@@ -1,92 +1,192 @@
 #include <iostream>
 #include <cmath>
+#include <vector>
 #include <gmp.h>
-#include <bitset>
-// Евклидово расстояние в double (IEEE 754)
-double euclidean_distance_double(double x1, double y1, double z1, 
-                                 double x2, double y2, double z2) {
-    double dx = x2 - x1;
-    double dy = y2 - y1;
-    double dz = z2 - z1;
-    return std::sqrt(dx * dx + dy * dy + dz * dz);
-}
+#include <iomanip>
 
-// Евклидово расстояние с высокой точностью (GMP)
-void euclidean_distance_gmp(mpf_t result, double x1, double y1, double z1, 
-                                             double x2, double y2, double z2) {
-    mpf_t dx, dy, dz, sum, temp;
-    mpf_inits(dx, dy, dz, sum, temp, NULL);
-    
-    // Устанавливаем точность GMP (больше 53 бит для double)
-    mpf_set_default_prec(128);
+// Функция для поиска первого отличающегося разряда и вывода разницы
+void find_first_diff(double d1, double d2) {
+    double diff = std::abs(d1 - d2);
 
-    // Вычисляем разности
-    mpf_set_d(dx, x2 - x1);
-    mpf_set_d(dy, y2 - y1);
-    mpf_set_d(dz, z2 - z1);
-
-    // Квадраты разностей
-    mpf_mul(temp, dx, dx);
-    mpf_set(sum, temp);
-
-    mpf_mul(temp, dy, dy);
-    mpf_add(sum, sum, temp);
-
-    mpf_mul(temp, dz, dz);
-    mpf_add(sum, sum, temp);
-
-    // Квадратный корень
-    mpf_sqrt(result, sum);
-
-    mpf_clears(dx, dy, dz, sum, temp, NULL);
-}
-// Функция для сравнения битов двух double
-bool compare_bits(double d1, double d2) {
-    // Получаем представление чисел в виде битов
-    std::bitset<64> bits1(*reinterpret_cast<unsigned long long*>(&d1));
-    std::bitset<64> bits2(*reinterpret_cast<unsigned long long*>(&d2));
-    return bits1 == bits2;
-}
-
-// Сравнение результатов double vs GMP
-void compare_distances(double x1, double y1, double z1, 
-                       double x2, double y2, double z2) {
-    // Вычисление в double
-    double d_double = euclidean_distance_double(x1, y1, z1, x2, y2, z2);
-
-    // Вычисление в GMP
-    mpf_t d_gmp;
-    mpf_init(d_gmp);
-    euclidean_distance_gmp(d_gmp, x1, y1, z1, x2, y2, z2);
-
-    // Перевод результата GMP в double
-    double d_gmp_double = mpf_get_d(d_gmp);
-
-    // Проверка равенства (сравниваем с точностью до младшего значащего бита)
-    if (compare_bits(d_double, d_gmp_double)) {
-        std::cout << "Результаты совпадают с точностью до последнего значащего бита!\n";
-    } else {
-        std::cout << "Ошибка: расхождение в значащих битах!\n";
-        std::cout << "Double: " << d_double << "\n";
-        std::cout << "GMP: " << d_gmp_double << "\n";
+    if (diff == 0.0) {
+        std::cout << "Числа идентичны.\n";
+        return;
     }
 
-    // Проверка симметрии расстояния d(A, B) == d(B, A)
-    double d_swapped = euclidean_distance_double(x2, y2, z2, x1, y1, z1);
-    if (d_double == d_swapped) {
-        std::cout << "Проверка симметрии пройдена: d(A, B) == d(B, A)\n";
-    } else {
-        std::cout << "Ошибка: d(A, B) != d(B, A)\n";
+    std::cout << std::fixed << std::setprecision(20);
+    std::cout << "Разница между числами: " << diff << "\n";
+}
+
+// Наивное вычисление евклидова расстояния
+double euclidean_distance_naive(const std::vector<double>& a, const std::vector<double>& b) {
+    double sum = 0.0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        double diff = a[i] - b[i];
+        sum += diff * diff;
+    }
+    return std::sqrt(sum);
+}
+
+// Вычисление евклидова расстояния с суммированием по Кахану
+double euclidean_distance_kahan(const std::vector<double>& a, const std::vector<double>& b) {
+    double sum = 0.0;
+    double c = 0.0; // компенсация ошибки
+    for (size_t i = 0; i < a.size(); ++i) {
+        double diff = a[i] - b[i];
+        double term = diff * diff;
+        double y = term - c;
+        double t = sum + y;
+        c = (t - sum) - y;
+        sum = t;
+    }
+    return std::sqrt(sum);
+}
+
+// Вычисление евклидова расстояния с парным суммированием
+double pairwise_sum(const std::vector<double>& values, size_t start, size_t end) {
+    if (end - start == 1) return values[start];
+    if (end - start == 0) return 0.0;
+
+    size_t mid = start + (end - start) / 2;
+    return pairwise_sum(values, start, mid) + pairwise_sum(values, mid, end);
+}
+
+double euclidean_distance_pairwise(const std::vector<double>& a, const std::vector<double>& b) {
+    std::vector<double> squared_diffs(a.size());
+    for (size_t i = 0; i < a.size(); ++i) {
+        double diff = a[i] - b[i];
+        squared_diffs[i] = diff * diff;
+    }
+    double sum = pairwise_sum(squared_diffs, 0, squared_diffs.size());
+    return std::sqrt(sum);
+}
+
+// Вычисление евклидова расстояния с высокой точностью (GMP)
+double euclidean_distance_gmp(const std::vector<double>& a, const std::vector<double>& b) {
+    mpf_set_default_prec(256);
+
+    mpf_t sum, diff, term;
+    mpf_inits(sum, diff, term, NULL);
+    mpf_set_ui(sum, 0);
+
+    for (size_t i = 0; i < a.size(); ++i) {
+        double d = a[i] - b[i];
+        mpf_set_d(diff, d);
+        mpf_mul(term, diff, diff);
+        mpf_add(sum, sum, term);
     }
 
-    mpf_clear(d_gmp);
+    mpf_sqrt(sum, sum);
+    double result = mpf_get_d(sum);
+
+    mpf_clears(sum, diff, term, NULL);
+    return result;
+}
+
+// Функция проверки симметрии d(A,B) == d(B,A)
+void check_symmetry(const std::vector<double>& a, const std::vector<double>& b) {
+    double d1 = euclidean_distance_naive(a, b);
+    double d2 = euclidean_distance_naive(b, a);
+    if (d1 == d2)
+        std::cout << "Симметрия пройдена (наивное суммирование).\n";
+    else
+        std::cout << "Ошибка симметрии (наивное суммирование): разница = " << std::abs(d1 - d2) << "\n";
+
+    d1 = euclidean_distance_kahan(a, b);
+    d2 = euclidean_distance_kahan(b, a);
+    if (d1 == d2)
+        std::cout << "Симметрия пройдена (Кахан).\n";
+    else
+        std::cout << "Ошибка симметрии (Кахан): разница = " << std::abs(d1 - d2) << "\n";
+
+    d1 = euclidean_distance_pairwise(a, b);
+    d2 = euclidean_distance_pairwise(b, a);
+    if (d1 == d2)
+        std::cout << "Симметрия пройдена (Pairwise).\n";
+    else
+        std::cout << "Ошибка симметрии (Pairwise): разница = " << std::abs(d1 - d2) << "\n";
+
+    d1 = euclidean_distance_gmp(a, b);
+    d2 = euclidean_distance_gmp(b, a);
+    if (d1 == d2)
+        std::cout << "Симметрия пройдена (GMP).\n";
+    else
+        std::cout << "Ошибка симметрии (GMP): разница = " << std::abs(d1 - d2) << "\n";
+}
+
+void test_multiplication_error() {
+    const size_t N = 1000000;
+    std::vector<double> a(N), b(N);
+
+    for (size_t i = 0; i < N; ++i) {
+        a[i] = 1e5 + i * 1e-3;
+        b[i] = 1e5 + (i + 0.1) * 1e-3;
+    }
+
+    double d_naive = euclidean_distance_naive(a, b);
+    double d_kahan = euclidean_distance_kahan(a, b);
+    double d_pairwise = euclidean_distance_pairwise(a, b);
+    double d_gmp = euclidean_distance_gmp(a, b);
+
+    std::cout.precision(20);
+    std::cout << std::fixed;
+    std::cout << "Euclidean distance (наивное суммирование): " << d_naive << "\n";
+    std::cout << "Euclidean distance (суммирование по Кахану): " << d_kahan << "\n";
+    std::cout << "Euclidean distance (Pairwise): " << d_pairwise << "\n";
+    std::cout << "Euclidean distance (GMP, высокая точность): " << d_gmp << "\n";
+
+    std::cout << "\nСравнение (наивное vs Кахан):\n";
+    find_first_diff(d_naive, d_kahan);
+
+    std::cout << "\nСравнение (наивное vs Pairwise):\n";
+    find_first_diff(d_naive, d_pairwise);
+
+    std::cout << "\nСравнение (наивное vs GMP):\n";
+    find_first_diff(d_naive, d_gmp);
+
+    check_symmetry(a, b);
+}
+
+// Тест на малых числах
+void test_small_multiplication_error() {
+    const size_t N = 1000000;
+    std::vector<double> a(N), b(N);
+
+    for (size_t i = 0; i < N; ++i) {
+        a[i] = 1e-5 + i * 1e-7;
+        b[i] = 1e-5 + (i + 0.1) * 1e-7;
+    }
+
+    double d_naive = euclidean_distance_naive(a, b);
+    double d_kahan = euclidean_distance_kahan(a, b);
+    double d_pairwise = euclidean_distance_pairwise(a, b);
+    double d_gmp = euclidean_distance_gmp(a, b);
+
+    std::cout.precision(20);
+    std::cout << std::fixed;
+    std::cout << "\nEuclidean distance (наивное суммирование): " << d_naive << "\n";
+    std::cout << "Euclidean distance (суммирование по Кахану): " << d_kahan << "\n";
+    std::cout << "Euclidean distance (Pairwise): " << d_pairwise << "\n";
+    std::cout << "Euclidean distance (GMP, высокая точность): " << d_gmp << "\n";
+
+    std::cout << "\nСравнение (наивное vs Кахан):\n";
+    find_first_diff(d_naive, d_kahan);
+
+    std::cout << "\nСравнение (наивное vs Pairwise):\n";
+    find_first_diff(d_naive, d_pairwise);
+
+    std::cout << "\nСравнение (наивное vs GMP):\n";
+    find_first_diff(d_naive, d_gmp);
+
+    check_symmetry(a, b);
 }
 
 int main() {
-    double x1 = 1.123456789, y1 = 2.987654321, z1 = -3.141592653;
-    double x2 = -1.987654321, y2 = 0.123456789, z2 = 2.718281828;
+    std::cout << "Тест с большими числами:\n";
+    test_multiplication_error();
 
-    compare_distances(x1, y1, z1, x2, y2, z2);
+    std::cout << "\nТест с малыми числами:\n";
+    test_small_multiplication_error();
 
     return 0;
 }
